@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Monofoxe.Engine.SceneSystem;
 using Monofoxe.Engine.Utils.CustomCollections;
 
@@ -172,7 +173,12 @@ namespace Monofoxe.Engine.EC
 			{
 				throw new Exception("Component " + component + "already has an owner!");
 			}
-			_componentDictionary.Add(component.GetType(), component);
+
+			// Assign the instance of that component to the abstract inheritors of Component in the instance's inheritance hierarchy.
+			foreach (var type in EnumerateTypeWithAbstractInheritors<T>())
+			{
+				_componentDictionary.Add(type, component);
+			}
 			_componentList.Add(component);
 			component.Owner = this;
 			component.Initialize();
@@ -181,6 +187,17 @@ namespace Monofoxe.Engine.EC
 			return component; // Doing a passthrough for nicer syntax.
 		}
 
+		private static IEnumerable<Type> EnumerateTypeWithAbstractInheritors<T>() where T : Component
+			=> EnumerateTypeWithAbstractInheritors(typeof(T));
+
+		private static IEnumerable<Type> EnumerateTypeWithAbstractInheritors(Type typeT)
+		{
+			for (var type = typeT; type != typeof(Component); type = type.BaseType)
+			{
+				if (!type.IsAbstract && type != typeT) yield break;
+				yield return type;
+			}
+		}
 
 		/// <summary>
 		/// Returns component of given class.
@@ -255,15 +272,21 @@ namespace Monofoxe.Engine.EC
 		/// </summary>
 		public Component RemoveComponent(Type type)
 		{
-			if (_componentDictionary.TryGetValue(type, out Component component))
+			Component component = null;
+			
+			if (_componentDictionary.TryGetValue(type, out component))
 			{
 				component.Destroy();
-				_componentDictionary.Remove(type);
+				foreach (var keyValuePair in _componentDictionary.Where(x => x.Value == component))
+				{
+					_componentDictionary.Remove(keyValuePair.Key);
+				}
 				_componentList.Remove(component);
 				component.Owner = null;
 				return component;
 			}
-			return null;
+			
+			return component;
 		}
 		
 		#endregion Components.
